@@ -45,6 +45,7 @@ pub async fn report(url: &str, success: bool, cached: bool, bytes: usize, durati
         .await;
 }
 
+#[allow(dead_code)]
 pub async fn get_image(
     base_url: &Url,
     quality_mode: &str,

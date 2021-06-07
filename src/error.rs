@@ -10,6 +10,11 @@ pub enum Error {
     },
     #[snafu(display("Failed to perform HTTP request: {}", source))]
     HttpErr { source: reqwest::Error },
+    #[snafu(display("druid PlatformError during `{}`: {}", action, source))]
+    DruidErr {
+        action: &'static str,
+        source: druid::PlatformError,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

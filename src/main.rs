@@ -2,6 +2,7 @@ mod async_data;
 mod endpoint;
 mod error;
 mod schema;
+mod types;
 
 pub use error::{Error, Result};
 
@@ -21,7 +22,7 @@ use druid::im;
 use druid::widget::{Controller, Flex, Label, List};
 use druid::{
     AppLauncher, Data, Env, Event, EventCtx, FontDescriptor, FontFamily, Lens, LifeCycle,
-    LifeCycleCtx, UpdateCtx, Widget, WidgetExt, WindowDesc,
+    LifeCycleCtx, Widget, WidgetExt, WindowDesc,
 };
 
 fn main() -> Result<()> {
@@ -80,7 +81,7 @@ fn manga_list(tx: mpsc::UnboundedSender<Message>) -> impl Widget<MangaListData> 
 }
 
 struct MangaListController {
-    listing_info: async_data::AsyncData<Result<schema::MangaListResponse>>,
+    listing_info: async_data::AsyncData<Result<types::MangaList>>,
     tx: mpsc::UnboundedSender<Message>,
 }
 
@@ -106,14 +107,10 @@ impl<W: Widget<MangaListData>> Controller<MangaListData, W> for MangaListControl
     ) {
         if matches!(event, Event::Timer(_)) {
             if let Some(response) = self.listing_info.poll() {
-                for item_resp in response.unwrap().results {
-                    assert!(matches!(item_resp.result, schema::Success::Ok));
-                    let mut item: schema::Manga = item_resp.data;
-                    assert!(matches!(item.item_type, schema::ItemType::Manga));
-                    let (id, title) = (item.id, item.attributes.title.remove("en").unwrap());
+                for item in response.unwrap().series.values() {
                     let series = MangaViewData {
-                        id: Arc::new(id),
-                        title: Arc::new(title),
+                        id: item.id.into(),
+                        title: item.attributes.title["en"].clone().into(),
                     };
                     data.titles.push_back(series);
                 }
@@ -138,17 +135,6 @@ impl<W: Widget<MangaListData>> Controller<MangaListData, W> for MangaListControl
             ctx.request_timer(REFRESH);
         }
         child.lifecycle(ctx, event, data, env);
-    }
-
-    fn update(
-        &mut self,
-        child: &mut W,
-        ctx: &mut UpdateCtx<'_, '_>,
-        old_data: &MangaListData,
-        data: &MangaListData,
-        env: &Env,
-    ) {
-        child.update(ctx, old_data, data, env);
     }
 }
 

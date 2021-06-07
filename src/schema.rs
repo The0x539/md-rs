@@ -10,7 +10,7 @@ use uuid::Uuid;
 macro_rules! wrapper {
     ($(#[$attr:meta])* $name:ident: $inner:ty) => {
         $(#[$attr])*
-        #[derive(Debug, Clone, Deserialize)]
+        #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
         #[serde(transparent)]
         pub struct $name(pub $inner);
         impl std::fmt::Display for $name {
@@ -97,7 +97,7 @@ pub enum Visibility {
     Private,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationshipType {
     Manga,
@@ -125,7 +125,7 @@ pub enum SortDirection {
     Desc,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Success {
     Ok,
@@ -186,7 +186,7 @@ pub struct ItemResponse<T> {
 
 pub type MangaResponse = ItemResponse<Manga>;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ItemType {
     Manga,

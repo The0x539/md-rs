@@ -15,6 +15,8 @@ pub enum Error {
         action: &'static str,
         source: druid::PlatformError,
     },
+    #[snafu(display("Failed to decode image: {}", source))]
+    ImageErr { source: image::ImageError },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

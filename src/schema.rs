@@ -10,7 +10,7 @@ use uuid::Uuid;
 macro_rules! wrapper {
     ($(#[$attr:meta])* $name:ident: $inner:ty) => {
         $(#[$attr])*
-        #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize)]
+        #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
         #[serde(transparent)]
         pub struct $name(pub $inner);
         impl std::fmt::Display for $name {
@@ -33,6 +33,8 @@ macro_rules! id {
 id!(MangaId);
 id!(TagId);
 id!(ChapterId);
+id!(UserId);
+id!(CoverId);
 
 wrapper!(Filename: String);
 wrapper!(ChapterHash: String);
@@ -187,11 +189,12 @@ pub struct ItemResponse<T> {
 pub type MangaResponse = ItemResponse<Manga>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum ItemType {
     Manga,
     Tag,
     Chapter,
+    CoverArt,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -316,4 +319,33 @@ pub struct ChapterAttributes {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub publish_at: DateTime<Utc>,
+}
+
+#[optfield(
+    pub CoverQuery,
+    attrs = add(derive(Default))
+)]
+#[derive(Debug, Clone, Serialize)]
+struct FullCoverQuery {
+    pub limit: u8,
+    pub offset: u32,
+    pub manga: Vec<MangaId>,
+    pub ids: Vec<CoverId>,
+    pub uploaders: Vec<UserId>,
+    pub order: SortOrder,
+}
+
+pub type CoverListResponse = ListResponse<CoverResponse>;
+pub type CoverResponse = ItemResponse<Cover>;
+pub type Cover = Item<CoverId, CoverAttributes>;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverAttributes {
+    pub volume: Option<String>,
+    pub file_name: Filename,
+    pub description: Option<String>,
+    pub version: u32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

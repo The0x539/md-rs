@@ -1,3 +1,5 @@
+#![deny(rust_2018_idioms)]
+
 mod async_data;
 mod endpoint;
 mod error;
@@ -6,7 +8,6 @@ mod types;
 
 pub use error::{Error, Result};
 
-use std::fmt::Display;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,10 +20,11 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 use druid::im;
-use druid::widget::{Controller, Flex, Label, List};
+use druid::piet::ImageFormat;
+use druid::widget::{Controller, Flex, Image, Label, List};
 use druid::{
-    AppLauncher, Data, Env, Event, EventCtx, FontDescriptor, FontFamily, Lens, LifeCycle,
-    LifeCycleCtx, Widget, WidgetExt, WindowDesc,
+    AppLauncher, Data, Env, Event, EventCtx, ImageBuf, Lens, LifeCycle, LifeCycleCtx, UpdateCtx,
+    Widget, WidgetExt, WindowDesc,
 };
 
 fn main() -> Result<()> {
@@ -32,7 +34,7 @@ fn main() -> Result<()> {
     let bg = rt.spawn(async_main(rx));
 
     let main_window = WindowDesc::new(move || manga_list(tx))
-        .window_size((200., 200.))
+        .window_size((800., 300.))
         .set_position((100., 100.));
     let data = MangaListData::default();
 
@@ -49,24 +51,104 @@ fn main() -> Result<()> {
 struct MangaViewData {
     id: Arc<schema::MangaId>,
     title: Arc<String>,
+    cover_id: Option<Arc<schema::CoverId>>,
+    cover_buf: Arc<Option<ImageBuf>>,
 }
 
-fn arc_to_string<D: Display>(data: &Arc<D>, _env: &Env) -> String {
-    data.to_string()
-}
 fn arc_to_owned<D: AsRef<str>>(data: &Arc<D>, _env: &Env) -> String {
     (**data).as_ref().to_owned()
 }
 
-fn manga_view() -> impl Widget<MangaViewData> {
-    const FONT: FontDescriptor = FontDescriptor::new(FontFamily::MONOSPACE);
-    let id_label = Label::dynamic(arc_to_string)
-        .with_font(FONT)
-        .lens(MangaViewData::id);
-    let title_label = Label::dynamic(arc_to_owned)
-        .with_font(FONT)
-        .lens(MangaViewData::title);
-    Flex::row().with_child(id_label).with_child(title_label)
+fn manga_view(tx: mpsc::UnboundedSender<Message>) -> impl Widget<MangaViewData> {
+    let title_label = Label::dynamic(arc_to_owned).lens(MangaViewData::title);
+    Flex::column()
+        .with_child(title_label)
+        .controller(MangaViewController::new(tx))
+}
+
+struct MangaViewController {
+    cover_info: async_data::AsyncData<Result<image::RgbImage>>,
+    tx: mpsc::UnboundedSender<Message>,
+}
+
+impl MangaViewController {
+    pub fn new(tx: mpsc::UnboundedSender<Message>) -> Self {
+        Self {
+            cover_info: Default::default(),
+            tx,
+        }
+    }
+}
+
+impl Controller<MangaViewData, Flex<MangaViewData>> for MangaViewController {
+    fn event(
+        &mut self,
+        child: &mut Flex<MangaViewData>,
+        ctx: &mut EventCtx<'_, '_>,
+        event: &Event,
+        data: &mut MangaViewData,
+        env: &Env,
+    ) {
+        if matches!(event, Event::Timer(_)) {
+            if let Some(response) = self.cover_info.poll() {
+                let img = response.unwrap();
+                let (w, h) = (img.width(), img.height());
+                let pixels: Arc<[u8]> = img.into_raw().into();
+                let buf = ImageBuf::from_raw(pixels, ImageFormat::Rgb, w as usize, h as usize);
+                data.cover_buf = Arc::new(Some(buf));
+            } else {
+                ctx.request_timer(REFRESH);
+            }
+        }
+        child.event(ctx, event, data, env);
+    }
+
+    fn lifecycle(
+        &mut self,
+        child: &mut Flex<MangaViewData>,
+        ctx: &mut LifeCycleCtx<'_, '_>,
+        event: &LifeCycle,
+        data: &MangaViewData,
+        env: &Env,
+    ) {
+        if matches!(event, LifeCycle::WidgetAdded) {
+            if let Some(cover_id) = &data.cover_id {
+                let url = format!("https://api.mangadex.org/cover/{}", cover_id);
+                let manga_id = *data.id;
+                let fut = async move {
+                    let resp = endpoint::get_json::<_, schema::CoverResponse>(url).await?;
+
+                    assert_eq!(resp.result, schema::Success::Ok);
+                    assert_eq!(resp.data.item_type, schema::ItemType::CoverArt);
+
+                    let filename = resp.data.attributes.file_name;
+
+                    let img = endpoint::get_cover(&manga_id, &filename, ".256.jpg").await?;
+                    Ok(img)
+                };
+                self.cover_info.start(&self.tx, fut);
+                ctx.request_timer(REFRESH);
+            }
+        }
+        child.lifecycle(ctx, event, data, env);
+    }
+
+    fn update(
+        &mut self,
+        child: &mut Flex<MangaViewData>,
+        ctx: &mut UpdateCtx<'_, '_>,
+        old_data: &MangaViewData,
+        data: &MangaViewData,
+        env: &Env,
+    ) {
+        child.update(ctx, old_data, data, env);
+        // I do not understand why this goes *after* the other thing.
+        if let (Some(buf), None) = (&*data.cover_buf, &*old_data.cover_buf) {
+            let view = Image::new(buf.clone());
+            child.add_child(view);
+            ctx.children_changed();
+        }
+    }
 }
 
 #[derive(Default, Clone, druid::Data, druid::Lens)]
@@ -75,7 +157,10 @@ struct MangaListData {
 }
 
 fn manga_list(tx: mpsc::UnboundedSender<Message>) -> impl Widget<MangaListData> {
-    List::new(manga_view)
+    let tx_clone = tx.clone();
+    List::new(move || manga_view(tx_clone.clone()))
+        .horizontal()
+        .with_spacing(4.0)
         .lens(MangaListData::titles)
         .controller(MangaListController::new(tx))
 }
@@ -111,6 +196,11 @@ impl<W: Widget<MangaListData>> Controller<MangaListData, W> for MangaListControl
                     let series = MangaViewData {
                         id: item.id.into(),
                         title: item.attributes.title["en"].clone().into(),
+                        cover_id: item
+                            .relationships
+                            .get(&types::RelationshipType::CoverArt)
+                            .map(|id| Arc::new(schema::CoverId(*id))),
+                        cover_buf: Arc::new(None),
                     };
                     data.titles.push_back(series);
                 }

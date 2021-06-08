@@ -10,6 +10,8 @@ use url::Url;
 use crate::error::{HttpErr, ImageErr, JsonErr, Result};
 use crate::schema;
 
+pub mod auth;
+
 static RATE_LIMIT: Lazy<RateLimiter> = Lazy::new(|| RateLimiter::new(5, Duration::from_secs(1)));
 static CLIENT: Lazy<Client> = Lazy::new(Client::new);
 

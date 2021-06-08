@@ -17,7 +17,18 @@ use snafu::ResultExt;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
+use std::path::PathBuf;
+
 use druid::{AppLauncher, WindowDesc};
+
+fn data_dir() -> PathBuf {
+    let p_dirs = directories::ProjectDirs::from("", "The0x539", "md-rs")
+        .expect("Could not determine project directory");
+
+    let dir = p_dirs.data_dir();
+    std::fs::create_dir_all(dir).expect("Failed to ensure existence of project directory");
+    dir.to_owned()
+}
 
 fn main() -> Result<()> {
     let (tx, rx) = mpsc::unbounded_channel();

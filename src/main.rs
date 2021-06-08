@@ -30,8 +30,11 @@ fn main() -> Result<()> {
         .set_position((100., 100.));
     let data = ui::manga_list::MangaListData::default();
 
-    AppLauncher::with_window(main_window)
-        .use_simple_logger()
+    let launcher = AppLauncher::with_window(main_window);
+    #[cfg(debug_assertions)]
+    let launcher = launcher.use_simple_logger();
+
+    launcher
         .launch(data)
         .context(error::DruidErr { action: "launch" })?;
 
